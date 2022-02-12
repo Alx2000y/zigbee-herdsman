@@ -285,5 +285,16 @@ export const ZiGateMessage: { [k: number]: ZiGateMessageType } = {
             {name: 'status', parameterType: 'UINT16BE'},
             {name: 'groupAddress', parameterType: 'UINT16BE'},
         ]
-    }
+    },
+    [ZiGateMessageCode.BackupList]: {
+        response: [
+            { name: 'payload', parameterType: 'BUFFER_RAW' },
+        ]
+    },
+    [ZiGateMessageCode.RestoreStatus]: {
+        response: [
+            { name: 'status', parameterType: 'UINT8' }, // <status: uint8_t>
+
+        ]
+    },
 };

@@ -4,6 +4,7 @@ import * as TsType from '../../tstype';
 import {ActiveEndpoints, DeviceType, LQI, LQINeighbor, NodeDescriptor, SimpleDescriptor} from '../../tstype';
 import * as Events from '../../events';
 import Adapter from '../../adapter';
+import {fs} from "mz";
 import {Direction, Foundation, FrameType, ZclFrame} from '../../../zcl';
 import {Queue, Wait, Waitress} from '../../../utils';
 import Driver from '../driver/zigate';
@@ -80,7 +81,14 @@ class ZiGateAdapter extends Adapter {
             if (resetResponse.code === ZiGateMessageCode.RestartNonFactoryNew) {
                 startResult = 'resumed';
             } else if (resetResponse.code === ZiGateMessageCode.RestartFactoryNew) {
-                startResult = 'reset';
+                try {
+                   await this.restoreBackup();
+	    	        const resetResponse = await this.driver.sendCommand(ZiGateCommandCode.Reset, {}, 5000);
+                    startResult = 'resumed';
+                }
+                catch (error) {
+                    startResult = 'reset';
+                }
             }
             await this.driver.sendCommand(ZiGateCommandCode.RawMode, {enabled: 0x01});
             // @todo check
@@ -194,12 +202,141 @@ class ZiGateAdapter extends Adapter {
      * pdm from host
      */
     public async supportsBackup(): Promise<boolean> {
-        return false;
+        return true;
     };
+    public async getNvArrdBackup(addr: number) {
+        debug.log('getNvArrdBackup 0x'+ addr.toString(16) );
+        return this.driver.sendCommand(ZiGateCommandCode.GetBackup, { address: addr })
+            .then((result) => {
+            return Promise.resolve(result.payload);
+        })
+            .catch((e) => {
+            debug.error(e);
+            return Promise.reject();
+        });
+    }
+    ;
+    public async restoreNvArrdBackup(data: any) {
+        return this.driver.sendCommand(ZiGateCommandCode.RestoreBackup, { data: data },5000)
+            .then((result) => {
+            return Promise.resolve(result);
+        })
+            .catch((e) => {
+            debug.error(e);
+            return Promise.reject();
+        });
+    }
+    ;
+    public async restoreBackup(): Promise<void> {
+        try {
+            const data = await fs.promises.readFile(this.backupPath+'.nv', "binary");
+                const backup = data.toString().split(/\r?\n/);
+                debug.error("RESTORING BACKUP %d lines", backup.length - 1 );
+                if(backup.length>1) {
+                    await this.driver.sendCommand(ZiGateCommandCode.SetRestoreMode, {},5000);
+                }
+                for(let i=1;i<backup.length;i++) {
+                    const data = backup[i].split(/ /).reduce((acc, val) => acc.concat(parseInt(val, 16)), []);
+                    if(data.length < 8) continue;
+                    if(data.length>200) {
+                        for(let k=0; k<Math.ceil(data.length/200);k++) {
+                            let tmp=data.slice( k*200 + 8, k*200 + 208);
+                            let size=tmp.length;
+                            tmp.unshift( (k*200) & 0xff);
+                            tmp.unshift( ((k*200)>>8) & 0xff);
+                            tmp.unshift(data[5]);
+                            tmp.unshift(data[4]);
+                            tmp.unshift( size & 0xff);
+                            tmp.unshift( (size>>8) & 0xff);
+                            tmp.unshift(data[1]);
+                            tmp.unshift(data[0]);
+                            console.log(tmp);
+                            const status = await this.restoreNvArrdBackup(tmp);
+                            console.log('Status: ' + status);
+                        }
+                    }else{
+                        console.log(data);
+                        const status = await this.restoreNvArrdBackup(data);
+                        console.log('Status: ' + status);
+                    }
+                    debug.log("restoring backup 0x"+ (data[0]*256 +data[1]).toString(16));
+                }
+                debug.error("RESTORING BACKUP finished");
+                this.driver.sendCommand(ZiGateCommandCode.Reset, {}, 5000);
+                process.exit();
+            //});
+        }
+        catch (error) {
+            debug.error("RESTORING BACKUP FAILED %o", error);
+            return Promise.reject();
+        }
 
+    }
     public async backup(): Promise<Models.Backup> {
-        throw new Error("This adapter does not support backup");
-    };
+        try {
+        let pdm=[];
+        debug.log("creating backup");
+        for (const addr of [0xf000,0xf001,0xf002,0xf003,0xf004,0xf005,0xf006,0xf100,0xf101,0xf102,0xf103,0xf104,0xf105,0xf106,0x0001,0x0002,0x0003]) {
+            const backupdata = await this.getNvArrdBackup(addr);
+            if(backupdata.payload.length>0) {
+                fs.appendFileSync(this.backupPath+'.nv', [...new Uint8Array(backupdata.payload)].map(x => x.toString(16).padStart(2, '0')).join(' ') + "\n");
+                pdm.push({address: addr, data: Buffer.from(backupdata.payload)});
+            }
+        }
+
+        const version = await this.getCoordinatorVersion();
+        /* get adapter ieee address */
+        const coordinator = await this.getCoordinator();
+        if (!coordinator.ieeeAddr ) {
+            throw new Error("Failed to read adapter IEEE address");
+        }
+        const ieeeAddress = "0x" + coordinator.ieeeAddr;
+        debug.log("fetched adapter ieee address");
+        /* get adapter nib */
+        const nib = await this.getNetworkParameters();
+        if (!nib) {
+            throw new Error("Cannot backup - adapter not commissioned");
+        }
+
+        return {
+            zigate: {
+                version: (version.type + '@' + version.meta.majorrel + '.' + version.meta.minorrel + '.' + version.meta.maintrel),
+            },
+            networkOptions: {
+                panId: nib.panID,
+                extendedPanId: Buffer.from(nib.extendedPanID.toString(16)),
+                channelList: this.networkOptions.channelList,
+                networkKey: Buffer.from(this.networkOptions.networkKey),
+                networkKeyDistribute: this.networkOptions.networkKeyDistribute
+            },
+            logicalChannel: nib.channel,
+            networkKeyInfo: {
+                sequenceNumber: 0,
+                frameCounter: 0
+            },
+            securityLevel: 5,
+            networkUpdateId: 0,
+            coordinatorIeeeAddress: Buffer.from(ieeeAddress, 'utf8'),
+            pdm: pdm,
+            devices: [
+/*            {
+                nwk_address: backupdata.payload,
+                ieee_address: 0x001,
+                is_child: false,
+                link_key: null
+            }
+*/
+            ]
+        };
+
+        }
+        catch (error) {
+            debug.error("RECEIVING BACKUP FAILED %o", error);
+            return Promise.reject();
+        }
+
+    };    
+
 
     public async setTransmitPower(value: number): Promise<void> {
         debug.log('setTransmitPower, %o', arguments);

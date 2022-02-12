@@ -26,6 +26,13 @@ export interface Backup {
             txCounter: number;
         };
     }[];
+    pdm?: {
+        address?: number;
+        data?: Buffer;
+    }[];
+    zigate?: {
+        version: string;
+    };
     znp?: {
         version?: ZnpVersion;
         trustCenterLinkKeySeed?: Buffer;

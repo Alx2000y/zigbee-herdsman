@@ -433,5 +433,48 @@ export const ZiGateCommand: { [key: string]: ZiGateCommandType } = {
             { name: 'destinationEndpoint', parameterType: 'UINT8' },
             { name: 'groupAddress', parameterType: 'UINT16BE' },
         ]
-    }
+    },
+    [ZiGateCommandCode.GetBackup]: {
+        request: [
+            { name: 'address', parameterType: 'UINT16BE' },
+        ],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.BackupList
+                }
+            ],
+        ]
+    },    
+    [ZiGateCommandCode.SetRestoreMode]: {
+        request: [],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.RestartFactoryNew
+                },
+            ],
+        ],
+        waitStatus: false
+
+    },    
+    [ZiGateCommandCode.RestoreBackup]: {
+        request: [
+            { name: 'data', parameterType: 'BUFFER' },
+        ],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.RestoreStatus
+                }
+            ],
+        ]
+
+    },     
 };

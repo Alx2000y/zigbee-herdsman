@@ -232,10 +232,17 @@ export enum ZiGateCommandCode {
     ManagementLQI = 0x004E,
     SetSecurityStateKey = 0x0022,
     AddGroup = 0x0060,
+    
+    GetBackup= 0x0B00,
+    RestoreBackup= 0x0B01,
+    SetRestoreMode= 0x0B02,
 }
 
 
 export enum ZiGateMessageCode {
+	BackupList = 0x8B00,
+	RestoreStatus = 0x8B01,
+
     DeviceAnnounce = 0x004D,
     Status = 0x8000,
     LOG = 0x8001,
