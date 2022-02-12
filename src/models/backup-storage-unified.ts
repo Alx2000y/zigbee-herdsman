@@ -22,6 +22,13 @@ export interface UnifiedBackupStorage {
         zstack?: {
             tclk_seed?: string;
         };
+	    zigate?: {
+    	    version: string;
+		    pdm?: {
+        		address?: number;
+		        data?: Buffer;
+		    }[];
+	    };
     };
     coordinator_ieee: string;
     pan_id: string;

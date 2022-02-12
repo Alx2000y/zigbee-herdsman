@@ -29,6 +29,10 @@ export const toUnifiedBackup = async (backup: Models.Backup): Promise<Models.Uni
             }
         },
         stack_specific: {
+        	zigate: {  
+        		version: [null, undefined].includes(backup.zigate?.version) ? undefined : backup.zigate?.version,
+        		pdm: backup.pdm
+        	},
             zstack: {
                 tclk_seed: backup.znp?.trustCenterLinkKeySeed?.toString("hex") || undefined
             }
