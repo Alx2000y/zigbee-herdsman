@@ -276,6 +276,10 @@ class ZiGateAdapter extends Adapter {
         try {
         let pdm=[];
         debug.log("creating backup");
+
+        fs.copyFileSync(this.backupPath+'.nv', this.backupPath+'.nv.bkp');
+        fs.unlinkSync(this.backupPath+'.nv');
+
         for (const addr of [0xf000,0xf001,0xf002,0xf003,0xf004,0xf005,0xf006,0xf100,0xf101,0xf102,0xf103,0xf104,0xf105,0xf106,0x0001,0x0002,0x0003]) {
             const backupdata = await this.getNvArrdBackup(addr);
             if(backupdata.payload.length>0) {
