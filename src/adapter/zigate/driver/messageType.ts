@@ -285,5 +285,57 @@ export const ZiGateMessage: { [k: number]: ZiGateMessageType } = {
             {name: 'status', parameterType: 'UINT16BE'},
             {name: 'groupAddress', parameterType: 'UINT16BE'},
         ]
-    }
+    },
+    [ZiGateMessageCode.BackupList]: {
+        response: [
+            { name: 'payload', parameterType: 'BUFFER_RAW' },
+        ]
+    },
+    [ZiGateMessageCode.RestoreStatus]: {
+        response: [
+            { name: 'status', parameterType: 'UINT8' }, // <status: uint8_t>
+
+        ]
+    },
+    [ZiGateMessageCode.NetBackup]: {
+        response: [
+			{ name: 'extendedPanID', parameterType: 'IEEEADDR' },
+        	{ name: 'UpdateId', parameterType: 'UINT8' },
+        	{ name: 'ActiveKeySeqNumber', parameterType: 'UINT8' },
+        	{ name: 'VsChannel', parameterType: 'UINT8' },
+        	{ name: 'VsPanId', parameterType: 'UINT16BE' },
+        	{ name: 'KeySeqNum', parameterType: 'UINT8' },
+	       	{ name: 'KeyType', parameterType: 'UINT8' },
+			{ name: 'key', parameterType: 'BUFFER_RAW' },
+        ]
+    },
+    [ZiGateMessageCode.DevBackup]: {
+        response: [
+        	{ name: 'length', parameterType: 'UINT8' },
+            { name: 'payload', parameterType: 'BUFFER_RAW' },
+        ]
+    },
+    [ZiGateMessageCode.ADevBackup]: {
+        response: [
+        	{ name: 'length', parameterType: 'UINT8' },
+            { name: 'payload', parameterType: 'BUFFER_RAW' },
+        ]
+    },
+    [ZiGateMessageCode.NetRestoreStatus]: {
+        response: [
+            { name: 'status', parameterType: 'UINT8' }, // <status: uint8_t>
+        ]
+    },
+    [ZiGateMessageCode.DevRestoreStatus]: {
+        response: [
+            { name: 'status', parameterType: 'UINT8' }, // <status: uint8_t>
+        ]
+    },
+
+    [ZiGateMessageCode.AddAuthenticateDeviceResponse]: {
+        response: [
+            { name: 'payload', parameterType: 'BUFFER_RAW' },
+        ]
+    },
+
 };

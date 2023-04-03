@@ -154,9 +154,10 @@ export const ZiGateCommand: { [key: string]: ZiGateCommandType } = {
     },
     [ZiGateCommandCode.SetSecurityStateKey]: { // 0x0022
         request: [
-            {name: 'keyType', parameterType: 'UINT8'}, // 	<key type: uint8_t>
-            {name: 'key', parameterType: 'BUFFER'}, //   <key: data>
-
+            { name: 'keyType', parameterType: 'UINT8' },
+            { name: 'keyState', parameterType: 'UINT8' },
+            { name: 'ApskeyType', parameterType: 'UINT8' },
+            { name: 'key', parameterType: 'BUFFER' }, //   <key: data>
         ],
     },
     [ZiGateCommandCode.GetVersion]: {
@@ -433,5 +434,150 @@ export const ZiGateCommand: { [key: string]: ZiGateCommandType } = {
             { name: 'destinationEndpoint', parameterType: 'UINT8' },
             { name: 'groupAddress', parameterType: 'UINT16BE' },
         ]
-    }
+    },
+    [ZiGateCommandCode.GetBackup]: {
+        request: [
+            { name: 'address', parameterType: 'UINT16BE' },
+        ],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.BackupList
+                }
+            ],
+        ]
+    },    
+    [ZiGateCommandCode.SetRestoreMode]: {
+        request: [],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.RestartFactoryNew
+                },
+            ],
+        ],
+        waitStatus: false
+
+    },    
+    [ZiGateCommandCode.RestoreBackup]: {
+        request: [
+            { name: 'data', parameterType: 'BUFFER' },
+        ],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.RestoreStatus
+                }
+            ],
+        ]
+
+    },     
+    [ZiGateCommandCode.SetRunningMode]: {
+        request: [],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.RestartNonFactoryNew
+                }
+            ],
+        ]
+    },
+    [ZiGateCommandCode.GetDevBackup]: {
+        request: [],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.DevBackup
+                },
+            ],
+        ],
+        waitStatus: false
+    },
+    [ZiGateCommandCode.GetADevBackup]: {
+        request: [],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.ADevBackup
+                },
+            ],
+        ],
+        waitStatus: false
+    },
+    [ZiGateCommandCode.GetNetBackup]: {
+        request: [],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.NetBackup
+                },
+            ],
+        ],
+        waitStatus: false
+    },
+    [ZiGateCommandCode.RestoreNetBackup]: {
+        request: [
+            { name: 'data', parameterType: 'BUFFER' },
+        ],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.NetRestoreStatus
+                }
+            ],
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.RestartNonFactoryNew
+                },
+            ],
+        ]
+    },
+    
+    [ZiGateCommandCode.RestoreDevBackup]: {
+        request: [
+            { name: 'data', parameterType: 'BUFFER' },
+        ],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.DevRestoreStatus
+                }
+            ],
+        ]
+    },
+    [ZiGateCommandCode.AddAuthenticateDevice]: {
+        request: [
+	        { name: 'data', parameterType: 'BUFFER' },
+        ],
+        response: [
+            [
+                {
+                    receivedProperty: 'code',
+                    matcher: equal,
+                    value: ZiGateMessageCode.AddAuthenticateDeviceResponse
+                }
+            ],
+        ]
+    },
+
 };

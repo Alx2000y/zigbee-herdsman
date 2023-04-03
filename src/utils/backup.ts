@@ -31,9 +31,20 @@ export const toUnifiedBackup = async (backup: Models.Backup): Promise<Models.Uni
                 ...(backup.ezsp) ? {
                     ezspVersion: [null, undefined].includes(backup.ezsp?.version) ? undefined : backup.ezsp?.version
                 } : undefined,
+                ...(backup.zigate) ? {
+                    zigateVersion: [null, undefined].includes(backup.zigate?.version) ? undefined : backup.zigate?.version,
+                } : undefined,
             }
         },
-        stack_specific: {
+         stack_specific: {
+            ...(backup.zigate) ? {
+            	zigate: {
+                    version: [null, undefined].includes(backup.zigate?.version) ? undefined : backup.zigate?.version,
+        			tclk_seed: backup.trustCenterLinkKey || null,
+    	            tclk_seq: backup.trustCenterLinkKeySeqNum || 0,
+	                tclk_type: backup.trustCenterLinkKeyType || 0,
+                }
+            } : undefined,
             ...(backup.znp) ? {
                 zstack: {
                     tclk_seed: backup.znp?.trustCenterLinkKeySeed?.toString("hex") || undefined
@@ -64,6 +75,7 @@ export const toUnifiedBackup = async (backup: Models.Backup): Promise<Models.Uni
                 nwk_address: nwkAddressBuffer.toString("hex"),
                 ieee_address: device.ieeeAddress.toString("hex"),
                 is_child: device.isDirectChild,
+                device_type: device.device_type || 0,
                 link_key: !device.linkKey ? undefined : {
                     key: device.linkKey.key.toString("hex"),
                     rx_counter: device.linkKey.rxCounter,
@@ -71,6 +83,7 @@ export const toUnifiedBackup = async (backup: Models.Backup): Promise<Models.Uni
                 }
             };
         }),
+		pdm: pdm || null
     };
 };
 
@@ -102,6 +115,7 @@ export const fromUnifiedBackup = (backup: Models.UnifiedBackupStorage): Models.B
             networkAddress: device.nwk_address ? Buffer.from(device.nwk_address, "hex").readUInt16BE() : Buffer.from("fffe", "hex").readUInt16BE(),
             ieeeAddress: Buffer.from(device.ieee_address, "hex"),
             isDirectChild: typeof device.is_child === "boolean" ? device.is_child : true,
+            device_type: device.device_type || null,
             linkKey: !device.link_key ? undefined : {
                 key: Buffer.from(device.link_key.key, "hex"),
                 rxCounter: device.link_key.rx_counter,
@@ -111,6 +125,12 @@ export const fromUnifiedBackup = (backup: Models.UnifiedBackupStorage): Models.B
         znp: {
             version: backup.metadata.internal?.znpVersion || undefined,
             trustCenterLinkKeySeed: tclkSeedString ? Buffer.from(tclkSeedString, "hex") : undefined,
+        },
+	    zigate: {
+        	version: backup.stack_specific.zigate?.version || undefined,
+    	    trustCenterLinkKey: backup.stack_specific.zigate?.tclk_seed || null,
+	        trustCenterLinkKeySeqNum: backup.stack_specific.zigate?.tclk_seq || 0,
+        	trustCenterLinkKeyType: backup.stack_specific.zigate?.tclk_type || 0,
         }
     };
 };

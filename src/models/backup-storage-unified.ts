@@ -26,6 +26,12 @@ export interface UnifiedBackupStorage {
         ezsp?: {
             hashed_tclk?: string;
         };
+	    zigate?: {
+    	    version: string;
+	   		tclk_seed?: string;
+    	    tclk_seq?: number;
+        	tclk_type?: number;
+	    };
     };
     coordinator_ieee: string;
     pan_id: string;
@@ -43,10 +49,16 @@ export interface UnifiedBackupStorage {
         nwk_address: string | null;
         ieee_address: string;
         is_child: boolean;
+        device_type: number;
         link_key: {
             key: string;
             rx_counter: number;
             tx_counter: number;
         } | null;
     }[];
+    pdm?: {
+        address?: number;
+        data?: Buffer;
+    }[];
+
 }

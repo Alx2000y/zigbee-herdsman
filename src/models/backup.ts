@@ -20,12 +20,23 @@ export interface Backup {
         networkAddress: number;
         ieeeAddress: Buffer;
         isDirectChild: boolean;
+        device_type: number;
         linkKey?: {
             key: Buffer;
             rxCounter: number;
             txCounter: number;
         };
     }[];
+    pdm?: {
+        address?: number;
+        data?: Buffer;
+    }[];
+    zigate?: {
+        version: string;
+   		tclk_seed?: string;
+        tclk_seq?: number;
+        tclk_type?: number;
+    };
     znp?: {
         version?: ZnpVersion;
         trustCenterLinkKeySeed?: Buffer;

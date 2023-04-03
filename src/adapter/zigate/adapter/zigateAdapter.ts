@@ -4,6 +4,7 @@ import * as TsType from '../../tstype';
 import {ActiveEndpoints, DeviceType, LQI, LQINeighbor, NodeDescriptor, SimpleDescriptor} from '../../tstype';
 import * as Events from '../../events';
 import Adapter from '../../adapter';
+import {fs} from "mz";
 import {Direction, Foundation, FrameType, ZclFrame} from '../../../zcl';
 import {Queue, Wait, Waitress} from '../../../utils';
 import Driver from '../driver/zigate';
@@ -80,7 +81,14 @@ class ZiGateAdapter extends Adapter {
             if (resetResponse.code === ZiGateMessageCode.RestartNonFactoryNew) {
                 startResult = 'resumed';
             } else if (resetResponse.code === ZiGateMessageCode.RestartFactoryNew) {
-                startResult = 'reset';
+                try {
+                   await this.restoreBackup();
+	    	        const resetResponse = await this.driver.sendCommand(ZiGateCommandCode.Reset, {}, 5000);
+                    startResult = 'resumed';
+                }
+                catch (error) {
+                    startResult = 'reset';
+                }
             }
             await this.driver.sendCommand(ZiGateCommandCode.RawMode, {enabled: 0x01});
             // @todo check
@@ -198,12 +206,166 @@ class ZiGateAdapter extends Adapter {
      * pdm from host
      */
     public async supportsBackup(): Promise<boolean> {
-        return false;
+        return true;
     };
+    public async restoreBackup(): Promise<void> {
+        try {
+			const data = JSON.parse((await fs.promises.readFile(this.backupPath)).toString());
+			//const data = utils_1.BackupUtils.fromUnifiedBackup(unifiedBackup);
+            await this.driver.sendCommand(ZiGateCommandCode.ErasePersistentData, {}, 5000);
+			const net = Buffer.concat([
+				Buffer.from(data.extended_pan_id.substring(2,18), 'hex'), 
+				Buffer.from([data.network_key.sequence_number, data.nwk_update_id, data.channel, 0x01, 0x01, data.stack_specific.zigate.tclk_seq, data.stack_specific.zigate.tclk_type]), 
+				Buffer.from(data.stack_specific.zigate.tclk_seed, 'hex'),
+				Buffer.from([0,0]), 
+				Buffer.from(data.network_key.key, 'hex'), 
+			], 49);
+			net.writeUInt16BE(parseInt(data.pan_id,16), 11);
+			net.writeUInt16BE(data.network_key.frame_counter, 31);
+			let rets = await this.driver.sendCommand(ZiGateCommandCode.RestoreNetBackup, { data: net }, 5000);
+            
+            for(let device of data.devices) {
+				if(!device) continue;
+      			let haskey = 1;
+                if(!device.hasOwnProperty('link_key')) {
+                	device = Object.assign({}, device ,{link_key: {key: "5a6967426565416c6c69616e63653039", rx_counter: "ffff"}});
+                	haskey=0;
+                }
+            	if(device.is_child==0) {
+            	    device = Object.assign({}, device ,{Field: "0000", ZedTimeoutindex: "00"});
+            	}
 
+               	let dev = Buffer.concat([
+               	    Buffer.from([device.is_child]),
+               	    Buffer.from(device.nwk_address, 'hex'),
+               	    Buffer.from(device.ieee_address, 'hex'),
+               	    Buffer.from([((device.device_type & 0xf0) | 0x5), 0x10]),
+               	    Buffer.from([(device.device_type & 0xf)>0? device.device_type & 0xf : 0xff]),
+               	    Buffer.from([haskey]),
+               	    Buffer.from(device.link_key.key, 'hex'),
+               	    Buffer.from(device.link_key.rx_counter, 'hex')
+               	    ],14+19);
+                let status = await this.driver.sendCommand(ZiGateCommandCode.RestoreDevBackup, { data: dev }, 5000);
+                console.log(status.payload.status);
+            }
+            debug.error("RESTORING BACKUP finished");
+            await this.driver.sendCommand(ZiGateCommandCode.Reset, {}, 5000);
+
+        }
+        catch (error) {
+            debug.error("RESTORING BACKUP FAILED %o", error);
+            return Promise.reject();
+        }
+    }
     public async backup(): Promise<Models.Backup> {
-        throw new Error("This adapter does not support backup");
-    };
+        try {
+            let pdm = [];
+            let devlist = [];
+            debug.log("creating backup");
+			//fs.appendFileSync(this.backupPath+'.nv', new Date().toISOString() + "\n");
+			for (const addr of [0xf000,0xf001,0xf002,0xf003,0xf004,0xf005,0xf006,0xf100,0xf101,0xf102,0xf103,0xf104,0xf105,0xf106,0x0001,0x0002,0x0003]) {
+            	const backupdata = await this.driver.sendCommand(ZiGateCommandCode.GetBackup, { address: addr });
+	            if(backupdata.payload.payload.length>0) {
+    	            //fs.appendFileSync(this.backupPath+'.nv', [...new Uint8Array(backupdata.payload.payload)].map(x => x.toString(16).padStart(2, '0')).join(' ') + "\n");
+        	        pdm.push({address: '0x' + addr.toString(16), data: Buffer.from(backupdata.payload.payload).toString('hex')});
+            	}
+	        }
+
+            const backupdev = await this.driver.sendCommand(ZiGateCommandCode.GetDevBackup, { });
+            console.log(backupdev.payload);
+            const devlen=32;
+    		for(let i = 0 ; i < backupdev.payload.length ; i++ ) {
+				const networkAddress = backupdev.payload.payload.toString('hex',i*devlen,i*devlen+2);
+				const ieee_address = backupdev.payload.payload.toString('hex', i*devlen+2,i*devlen+10);
+				let cp=10;
+				const u8ZedTimeoutindex = backupdev.payload.payload.toString('hex',i*devlen+cp, i*devlen+cp+1);
+				cp++;
+				const au8Field = backupdev.payload.payload.toString('hex',i*devlen+cp, i*devlen+cp+2);
+				cp+=2;
+				const haskey = backupdev.payload.payload.toString('hex',i*devlen + cp, i*devlen+cp+1);
+				cp++;
+				const key = backupdev.payload.payload.toString('hex',i*devlen + cp, i*devlen+cp+16);
+				cp+=16;
+				const retry = backupdev.payload.payload.toString('hex',i*devlen + cp, (i+1)*devlen);
+
+				let dev= { isDirectChild: false, networkAddress: parseInt(networkAddress,16), ieeeAddress: ieee_address };
+				if(haskey > 0) {
+					dev = Object.assign({}, dev ,{linkKey: {key: key, rxCounter: retry}});
+				}
+				devlist.push(dev);
+
+    		}
+            const backupAdev = await this.driver.sendCommand(ZiGateCommandCode.GetADevBackup, { });
+            console.log(backupAdev.payload.payload);
+            
+			for(let i = 0 ; i < backupAdev.payload.length ; i++ ) {
+				const networkAddress = backupAdev.payload.payload.toString('hex',i*devlen,i*devlen+2);
+				const ieee_address = backupAdev.payload.payload.toString('hex', i*devlen+2,i*devlen+10);
+				let cp=10;
+				const u8ZedTimeoutindex = backupAdev.payload.payload.toString('hex',i*devlen+cp, i*devlen+cp+1);
+				cp++;
+				const au8Field = backupAdev.payload.payload.toString('hex',i*devlen+cp, i*devlen+cp+2);
+				const devtype = backupAdev.payload.payload.toString('hex',i*devlen+cp, i*devlen+cp+1);
+				cp+=2;
+				const haskey = backupAdev.payload.payload.toString('hex',i*devlen + cp, i*devlen+cp+1);
+				cp++;
+				const key = backupAdev.payload.payload.toString('hex',i*devlen + cp, i*devlen+cp+16);
+				cp+=16;
+				const retry = backupAdev.payload.payload.toString('hex',i*devlen + cp, (i+1)*devlen);
+				let dev= { isDirectChild: true, networkAddress: parseInt(networkAddress, 16), ieeeAddress: ieee_address, ZedTimeoutindex: u8ZedTimeoutindex, Field: au8Field, device_type: (parseInt(devtype, 16) & 0xf0) + parseInt(u8ZedTimeoutindex, 16)<15?parseInt(u8ZedTimeoutindex):0 };
+				if(haskey > 0) {
+					dev = Object.assign({}, dev ,{linkKey: {key: key, rxCounter: retry}});
+				}
+				devlist.push(dev);
+			}
+
+			const net = await this.driver.sendCommand(ZiGateCommandCode.GetNetBackup, { });
+
+            const version = await this.getCoordinatorVersion();
+            const coordinator = await this.getCoordinator();
+            if (!coordinator.ieeeAddr) {
+                throw new Error("Failed to read adapter IEEE address");
+            }
+            const ieeeAddress = coordinator.ieeeAddr;
+            debug.log("fetched adapter ieee address");
+            /* get adapter nib */
+            const nib = await this.getNetworkParameters();
+            if (!nib) {
+            	throw new Error("Cannot backup - adapter not commissioned");
+            }
+            return {
+                zigate: {
+                    version: (version.type + '@' + version.meta.majorrel + '.' + version.meta.minorrel + '.' + version.meta.maintrel),
+                },
+                networkOptions: {
+                    panId: nib.panID,
+                    extendedPanId: nib.extendedPanID,
+                    channelList: this.networkOptions.channelList,
+                    networkKey: net.payload.key.toString('hex',16, 32),//this.networkOptions.networkKey.toString(16),
+                    networkKeyDistribute: this.networkOptions.networkKeyDistribute
+					
+                },
+                logicalChannel: nib.channel,
+                networkKeyInfo: {
+                    sequenceNumber: net.payload.KeySeqNum,
+                    frameCounter: parseInt(net.payload.key.toString('hex',32, 34),16), 
+                },
+                trustCenterLinkKey: net.payload.key.toString('hex',0, 16),
+                trustCenterLinkKeySeqNum: net.payload.KeySeqNum,
+                trustCenterLinkKeyType: net.payload.KeyType,
+                securityLevel: 5,
+                networkUpdateId: net.payload.UpdateId,
+                coordinatorIeeeAddress: ieeeAddress,
+                devices: devlist,
+                pdm: pdm,
+            };
+        }
+        catch (error) {
+            debug.error("RECEIVING BACKUP FAILED %o", error);
+            return Promise.reject();
+        }
+    }
+    ;
 
     public async setTransmitPower(value: number): Promise<void> {
         debug.log('setTransmitPower, %o', arguments);
@@ -651,13 +813,16 @@ class ZiGateAdapter extends Adapter {
         );
 
         debug.log(`Set security key`);
-        await this.driver.sendCommand(
+        if(this.networkOptions.networkKeyDistribute)
+          await this.driver.sendCommand(
             ZiGateCommandCode.SetSecurityStateKey,
             {
                 keyType: this.networkOptions.networkKeyDistribute ?
                     ZPSNwkKeyState.ZPS_ZDO_DISTRIBUTED_LINK_KEY :
                     ZPSNwkKeyState.ZPS_ZDO_PRECONFIGURED_LINK_KEY,
                 key: this.networkOptions.networkKey,
+    	        keyState: 0,
+	            ApskeyType:1
             },
         );
 
